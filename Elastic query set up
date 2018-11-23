@@ -1,0 +1,57 @@
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'Mottmacrules2018'
+
+
+CREATE DATABASE SCOPED CREDENTIAL ElasticDBQueryCred WITH IDENTITY = 'connecta',
+SECRET = 'Popcornstand1';
+
+
+
+CREATE EXTERNAL DATA SOURCE ElasticDBQueryStatging WITH 
+    (TYPE = RDBMS, 
+    LOCATION = 'connectanalyticsdev.database.windows.net', 
+    DATABASE_NAME = 'Staging', 
+    CREDENTIAL = ElasticDBQueryCred, 
+) ;
+
+create schema transform authorization dbo
+create schema elt authorization dbo
+
+CREATE EXTERNAL TABLE [transform].[Prospects_dimProject](
+	[LoadID] [int] NOT NULL,
+	[KeyHash] [varbinary](8000) NULL,
+	[RowHash] [varbinary](8000) NULL,
+	[Project] [varchar](10) NOT NULL,
+	[IsProspect] [bit] NOT NULL
+) 
+WITH 
+( 
+       DATA_SOURCE = ElasticDBQueryStatging 
+); 
+
+
+
+select * from  [transform].[Prospects_dimProject]
+
+
+create procedure elt.Populate_Prospects_dimProject
+as
+begin
+	
+	insert into dbo.dimProject ([KeyHash], [RowHash], [Project], [IsProspect])
+	select 
+		KeyHash
+		,RowHash
+		,Project
+		,IsProspect
+	from [Transform].[Prospects_dimProject] as tp
+	where not exists (select * from dbo.dimProject as X where x.KeyHash = tp.KeyHash)
+
+	update P
+	set P.IsProspect = dp.IsProspect
+	,P.Project = dp.Project
+	from dbo.dimProject as p
+	join transform.[Prospects_dimProject] as dp
+	on p.KeyHash = dp.keyhash
+	where p.RowHash <> dp.rowhash
+
+end
